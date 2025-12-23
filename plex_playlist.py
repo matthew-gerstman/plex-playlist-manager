@@ -29,12 +29,10 @@ THEMES = {
     },
     "halloween": {
         "keywords": [
-            "halloween", "spooky", "haunted", "ghost", "witch", "vampire",
-            "zombie", "monster", "trick or treat", "costume", "pumpkin",
-            "scary", "horror", "nightmare"
+            "halloween", "trick or treat", "pumpkin", "haunted house"
         ],
         "exclude": ["christmas", "thanksgiving"],
-        "description": "Halloween and spooky episodes"
+        "description": "Halloween episodes"
     },
     "thanksgiving": {
         "keywords": [
@@ -148,6 +146,7 @@ def find_themed_content(plex, theme_name, include_movies=True, include_tv=True):
     theme = THEMES[theme_name]
     keywords = theme["keywords"]
     exclude = theme["exclude"]
+    exclude_shows = theme.get("exclude_shows", [])
     
     items = []
     
@@ -172,6 +171,9 @@ def find_themed_content(plex, theme_name, include_movies=True, include_tv=True):
             if section.type == 'show':
                 click.echo(f"  Scanning {section.title}...")
                 for show in section.all():
+                    # Skip excluded shows
+                    if show.title in exclude_shows:
+                        continue
                     for episode in show.episodes():
                         title = episode.title or ""
                         summary = episode.summary or ""
