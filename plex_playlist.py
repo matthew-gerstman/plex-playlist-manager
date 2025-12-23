@@ -60,8 +60,7 @@ THEMES = {
     },
     "valentine": {
         "keywords": [
-            "valentine", "valentines", "valentine's day", "cupid",
-            "romantic", "love day"
+            "valentine", "valentines", "valentine's day", "cupid"
         ],
         "exclude": [],
         "description": "Valentine's Day episodes"
