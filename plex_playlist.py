@@ -68,7 +68,65 @@ THEMES = {
         "exclude": [],
         "description": "Valentine's Day episodes"
     },
+    "july4th": {
+        "keywords": [
+            "4th of july", "fourth of july", "july fourth", "july 4th",
+            "independence day", "fireworks"
+        ],
+        "exclude": ["christmas", "halloween", "thanksgiving", "alien", "war of the worlds"],
+        "description": "4th of July / Independence Day episodes"
+    },
 }
+
+
+# Musical episodes - specific episodes by show (not keyword-based)
+MUSICAL_EPISODES = {
+    # Classic musical episodes
+    "Buffy the Vampire Slayer": ["Once More, with Feeling"],
+    "Scrubs": ["My Musical"],
+    "Community": ["Regional Holiday Music"],
+    "Psych": ["Psych: The Musical", "The Musical"],
+    "Grey's Anatomy": ["Song Beneath the Song"],
+    "The Flash": ["Duet"],
+    "Lucifer": ["Bloody Celestial Karaoke Jam"],
+    "It's Always Sunny in Philadelphia": ["The Nightman Cometh", "The Gang Turns Black"],
+    "How I Met Your Mother": ["Girls Versus Suits", "Girls vs. Suits"],
+    "That '70s Show": ["That '70s Musical"],
+    "Fringe": ["Brown Betty"],
+    "Batman: The Brave and the Bold": ["Mayhem of the Music Meister"],
+    "The Simpsons": ["All Singing, All Dancing"],
+    "South Park": ["Elementary School Musical"],
+    "Bob's Burgers": ["Work Hard or Die Trying", "Glued, Where's My Bob"],
+    "Xena: Warrior Princess": ["The Bitter Suite", "Lyre, Lyre"],
+    "Riverdale": ["A Night to Remember", "Wicked Little Town", "Next to Normal"],
+    "Even Stevens": ["Influenza: The Musical"],
+    "7th Heaven": ["Red Socks"],
+    "Daria": ["Daria!"],
+    "Lexx": ["Brigadoom"],
+    "The Drew Carey Show": ["Drew and Kate's Duet"],
+    "Hercules: The Legendary Journeys": ["...And Fancy Free"],
+    "Oz": ["Variety"],
+    "Once Upon a Time": ["The Song in Your Heart"],
+    "The Magicians": ["All That Josh", "A Life in the Day"],
+    "Supergirl": ["Duet"],
+    "Legacies": ["Salvatore: The Musical!"],
+    "Supernatural": ["Fan Fiction"],
+    "Chicago Hope": ["Brain Salad Surgery"],
+}
+
+# Full musical series (every episode counts)
+MUSICAL_SERIES = [
+    "Zoey's Extraordinary Playlist",
+    "Crazy Ex-Girlfriend",
+    "Flight of the Conchords",
+    "Galavant",
+    "Smash",
+    "Glee",
+    "Schmigadoon!",
+    "High School Musical: The Musical: The Series",
+    "Julie and the Phantoms",
+    "Katy Keene",
+]
 
 
 def get_plex_connection(url, token):
@@ -108,238 +166,166 @@ def find_themed_content(plex, theme_name, include_movies=True, include_tv=True):
         
         return False
     
-    # Search TV episodes
+    # Search TV shows
     if include_tv:
-        try:
-            tv = plex.library.section('TV Shows')
-            for show in tv.all():
-                for ep in show.episodes():
-                    title = ep.title or ""
-                    summary = ep.summary or ""
-                    if matches_theme(title, summary):
-                        items.append(ep)
-        except Exception:
-            pass  # TV library might not exist
+        for section in plex.library.sections():
+            if section.type == 'show':
+                click.echo(f"  Scanning {section.title}...")
+                for show in section.all():
+                    for episode in show.episodes():
+                        title = episode.title or ""
+                        summary = episode.summary or ""
+                        if matches_theme(title, summary):
+                            items.append(episode)
     
     # Search movies
     if include_movies:
-        try:
-            movies = plex.library.section('Movies')
-            for movie in movies.all():
-                title = movie.title or ""
-                summary = movie.summary or ""
-                if matches_theme(title, summary):
-                    items.append(movie)
-        except Exception:
-            pass  # Movies library might not exist
+        for section in plex.library.sections():
+            if section.type == 'movie':
+                click.echo(f"  Scanning {section.title}...")
+                for movie in section.all():
+                    title = movie.title or ""
+                    summary = movie.summary or ""
+                    if matches_theme(title, summary):
+                        items.append(movie)
     
     return items
 
 
-def find_highly_rated_unwatched(plex, min_rating=8.0):
-    """Find highly rated unwatched movies."""
-    try:
-        movies = plex.library.section('Movies')
-    except Exception as e:
-        click.echo(f"❌ Could not access Movies library: {e}", err=True)
-        return []
+def find_musical_episodes(plex):
+    """Find musical episodes in the library."""
+    items = []
     
-    all_movies = movies.all()
-    unwatched = [m for m in all_movies if not m.isPlayed]
+    for section in plex.library.sections():
+        if section.type != 'show':
+            continue
+        
+        click.echo(f"  Scanning {section.title}...")
+        
+        for show in section.all():
+            show_title = show.title
+            
+            # Check if it's a full musical series
+            if show_title in MUSICAL_SERIES:
+                episodes = show.episodes()
+                items.extend(episodes)
+                click.echo(f"    ✓ {show_title}: {len(episodes)} episodes (musical series)")
+                continue
+            
+            # Check for specific musical episodes
+            if show_title in MUSICAL_EPISODES:
+                target_titles = MUSICAL_EPISODES[show_title]
+                for episode in show.episodes():
+                    ep_title = episode.title or ""
+                    for target in target_titles:
+                        if target.lower() in ep_title.lower():
+                            items.append(episode)
+                            click.echo(f"    ✓ {show_title} S{episode.seasonNumber}E{episode.episodeNumber}: {ep_title}")
+                            break
     
-    highly_rated = [
-        m for m in unwatched
-        if (m.rating or 0) >= min_rating or (m.audienceRating or 0) >= min_rating
-    ]
+    return items
+
+
+def create_or_update_playlist(plex, name, items):
+    """Create a new playlist or update existing one."""
+    # Check for existing playlist
+    existing = None
+    for playlist in plex.playlists():
+        if playlist.title == name:
+            existing = playlist
+            break
     
-    # Sort by best rating
-    highly_rated.sort(
-        key=lambda m: max(m.rating or 0, m.audienceRating or 0),
-        reverse=True
-    )
+    if existing:
+        click.echo(f"  Removing existing playlist '{name}'...")
+        existing.delete()
     
-    return highly_rated
+    if items:
+        playlist = plex.createPlaylist(name, items=items)
+        return playlist
+    return None
 
 
 @click.group()
-@click.option('--url', envvar='PLEX_URL', help='Plex server URL')
-@click.option('--token', envvar='PLEX_TOKEN', help='Plex authentication token')
-@click.pass_context
-def cli(ctx, url, token):
+def cli():
     """Plex Playlist Manager - Create themed playlists from your library."""
-    ctx.ensure_object(dict)
-    ctx.obj['url'] = url
-    ctx.obj['token'] = token
+    pass
 
 
 @cli.command()
-@click.pass_context
-def themes(ctx):
-    """List available playlist themes."""
-    click.echo("\n🎬 Available Themes:\n")
-    for name, theme in THEMES.items():
-        click.echo(f"  {name:12} - {theme['description']}")
-    click.echo()
-
-
-@cli.command()
-@click.argument('theme')
-@click.option('--name', '-n', help='Playlist name (defaults to theme name)')
-@click.option('--tv-only', is_flag=True, help='Only include TV episodes')
-@click.option('--movies-only', is_flag=True, help='Only include movies')
+@click.option('--url', envvar='PLEX_URL', required=True, help='Plex server URL')
+@click.option('--token', envvar='PLEX_TOKEN', required=True, help='Plex auth token')
+@click.option('--theme', required=True, type=click.Choice(list(THEMES.keys()) + ['musical']), 
+              help='Theme to create playlist for')
+@click.option('--name', default=None, help='Custom playlist name (default: theme name)')
+@click.option('--movies/--no-movies', default=True, help='Include movies')
+@click.option('--tv/--no-tv', default=True, help='Include TV episodes')
 @click.option('--dry-run', is_flag=True, help='Show what would be added without creating')
-@click.pass_context
-def create(ctx, theme, name, tv_only, movies_only, dry_run):
+def create(url, token, theme, name, movies, tv, dry_run):
     """Create a themed playlist."""
-    url = ctx.obj.get('url')
-    token = ctx.obj.get('token')
-    
-    if not url or not token:
-        click.echo("❌ Missing Plex URL or token. Set PLEX_URL and PLEX_TOKEN env vars.", err=True)
-        sys.exit(1)
-    
     plex = get_plex_connection(url, token)
     
-    include_movies = not tv_only
-    include_tv = not movies_only
+    playlist_name = name or f"{theme.title()} Episodes"
     
-    click.echo(f"\n🔍 Searching for {theme} content...")
-    items = find_themed_content(plex, theme, include_movies, include_tv)
+    click.echo(f"🔍 Searching for {theme} content...")
+    
+    if theme == 'musical':
+        items = find_musical_episodes(plex)
+    else:
+        items = find_themed_content(plex, theme, include_movies=movies, include_tv=tv)
     
     if not items:
         click.echo(f"❌ No {theme} content found in your library.")
         return
     
-    playlist_name = name or f"{theme.title()} Episodes"
-    
-    click.echo(f"\n✅ Found {len(items)} items:\n")
-    for item in items:
-        if hasattr(item, 'seasonNumber'):
-            click.echo(f"  📺 {item.grandparentTitle} - S{item.seasonNumber:02d}E{item.index:02d}: {item.title}")
+    click.echo(f"\n📋 Found {len(items)} items:")
+    for item in items[:20]:  # Show first 20
+        if hasattr(item, 'grandparentTitle'):
+            click.echo(f"  • {item.grandparentTitle} - {item.title}")
         else:
-            click.echo(f"  🎬 {item.title} ({item.year})")
-    
-    if dry_run:
-        click.echo(f"\n[Dry run - playlist '{playlist_name}' not created]")
-        return
-    
-    # Check if playlist exists
-    existing = None
-    for p in plex.playlists():
-        if p.title == playlist_name:
-            existing = p
-            break
-    
-    if existing:
-        click.confirm(f"\nPlaylist '{playlist_name}' exists. Replace it?", abort=True)
-        existing.delete()
-    
-    playlist = plex.createPlaylist(playlist_name, items=items)
-    duration_mins = sum(i.duration for i in items if i.duration) // 60000
-    
-    click.echo(f"\n🎉 Created '{playlist_name}' with {len(items)} items (~{duration_mins} min)")
-
-
-@cli.command()
-@click.option('--name', '-n', default='Highly Rated Unwatched', help='Playlist name')
-@click.option('--min-rating', '-r', default=8.0, help='Minimum rating (0-10 scale)')
-@click.option('--dry-run', is_flag=True, help='Show what would be added without creating')
-@click.pass_context
-def highly_rated(ctx, name, min_rating, dry_run):
-    """Create a playlist of highly rated unwatched movies."""
-    url = ctx.obj.get('url')
-    token = ctx.obj.get('token')
-    
-    if not url or not token:
-        click.echo("❌ Missing Plex URL or token. Set PLEX_URL and PLEX_TOKEN env vars.", err=True)
-        sys.exit(1)
-    
-    plex = get_plex_connection(url, token)
-    
-    click.echo(f"\n🔍 Finding unwatched movies rated {min_rating}+ ...")
-    items = find_highly_rated_unwatched(plex, min_rating)
-    
-    if not items:
-        click.echo("❌ No matching movies found.")
-        return
-    
-    click.echo(f"\n✅ Found {len(items)} movies:\n")
-    for m in items[:20]:  # Show first 20
-        rating = max(m.rating or 0, m.audienceRating or 0)
-        click.echo(f"  {rating:.1f} - {m.title} ({m.year})")
+            click.echo(f"  • {item.title}")
     
     if len(items) > 20:
         click.echo(f"  ... and {len(items) - 20} more")
     
     if dry_run:
-        click.echo(f"\n[Dry run - playlist '{name}' not created]")
+        click.echo(f"\n🔍 Dry run - playlist not created")
         return
     
-    # Check if playlist exists
-    existing = None
-    for p in plex.playlists():
-        if p.title == name:
-            existing = p
-            break
+    click.echo(f"\n📝 Creating playlist '{playlist_name}'...")
+    playlist = create_or_update_playlist(plex, playlist_name, items)
     
-    if existing:
-        click.confirm(f"\nPlaylist '{name}' exists. Replace it?", abort=True)
-        existing.delete()
-    
-    playlist = plex.createPlaylist(name, items=items)
-    duration_hrs = sum(i.duration for i in items if i.duration) // 3600000
-    
-    click.echo(f"\n🎉 Created '{name}' with {len(items)} movies (~{duration_hrs} hours)")
-
-
-@cli.command('list')
-@click.pass_context
-def list_playlists(ctx):
-    """List all playlists on your Plex server."""
-    url = ctx.obj.get('url')
-    token = ctx.obj.get('token')
-    
-    if not url or not token:
-        click.echo("❌ Missing Plex URL or token. Set PLEX_URL and PLEX_TOKEN env vars.", err=True)
-        sys.exit(1)
-    
-    plex = get_plex_connection(url, token)
-    playlists = plex.playlists()
-    
-    if not playlists:
-        click.echo("\nNo playlists found.")
-        return
-    
-    click.echo(f"\n📋 Found {len(playlists)} playlists:\n")
-    for p in playlists:
-        smart = "⚡" if p.smart else "📝"
-        duration = p.duration // 60000 if p.duration else 0
-        click.echo(f"  {smart} {p.title} ({len(p.items())} items, ~{duration} min)")
+    if playlist:
+        click.echo(f"✅ Created playlist '{playlist_name}' with {len(items)} items!")
+    else:
+        click.echo(f"❌ Failed to create playlist")
 
 
 @cli.command()
-@click.argument('name')
-@click.pass_context
-def delete(ctx, name):
-    """Delete a playlist."""
-    url = ctx.obj.get('url')
-    token = ctx.obj.get('token')
-    
-    if not url or not token:
-        click.echo("❌ Missing Plex URL or token. Set PLEX_URL and PLEX_TOKEN env vars.", err=True)
-        sys.exit(1)
-    
+@click.option('--url', envvar='PLEX_URL', required=True, help='Plex server URL')
+@click.option('--token', envvar='PLEX_TOKEN', required=True, help='Plex auth token')
+def list_themes(url, token):
+    """List available themes."""
+    click.echo("Available themes:\n")
+    for name, theme in THEMES.items():
+        click.echo(f"  {name}: {theme['description']}")
+    click.echo(f"  musical: Musical episodes (Buffy, Scrubs, Sunny, etc.)")
+
+
+@cli.command()
+@click.option('--url', envvar='PLEX_URL', required=True, help='Plex server URL')
+@click.option('--token', envvar='PLEX_TOKEN', required=True, help='Plex auth token')
+def list_playlists(url, token):
+    """List existing playlists."""
     plex = get_plex_connection(url, token)
     
-    try:
-        playlist = plex.playlist(name)
-    except Exception:
-        click.echo(f"❌ Playlist '{name}' not found.", err=True)
-        sys.exit(1)
+    playlists = plex.playlists()
+    if not playlists:
+        click.echo("No playlists found.")
+        return
     
-    click.confirm(f"Delete playlist '{name}'?", abort=True)
-    playlist.delete()
-    click.echo(f"✅ Deleted '{name}'")
+    click.echo("Playlists:\n")
+    for p in playlists:
+        click.echo(f"  • {p.title} ({len(p.items())} items)")
 
 
 if __name__ == '__main__':
